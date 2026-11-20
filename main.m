@@ -4,7 +4,9 @@ clc
 %% Parametres
 % -------------------------------------------------------------------------
 K = 1024; % Nombre de bits de message
-N = 1024; % Nombre de bits codés par trame (codée)
+N = 2*K; % Nombre de bits codés par trame (codée)
+
+trellis = poly2trellis(3, [7, 5], 7); % Treillis de l'Encodeur
 
 R = K/N; % Rendement de la communication
 
@@ -69,8 +71,8 @@ for iSNR = 1:length(EbN0dB)
         %% Emetteur
         tx_tic  = tic;                 % Mesure du débit d'encodage
         u       = randi([0,1],K,1);    % Génération du message aléatoire
-        c       = u;                   % Encodage
-        x       = 1-2*c;               % Modulation QPSK
+        c       = cc_encode(u, trellis); % Encodage
+        x       = 1-2*c;               % Modulation BPSK
         T_tx    = T_tx+toc(tx_tic);    % Mesure du débit d'encodage
         debitTX = pqtNbr*K/8/T_tx/1e6;
         
@@ -80,9 +82,10 @@ for iSNR = 1:length(EbN0dB)
         
         %% Recepteur
         rx_tic = tic;                  % Mesure du débit de décodage
-        Lc      = 2*y/sigmaz2(iSNR);   % Démodulation (retourne des LLRs)
-        u_rec   = double(Lc(1:K) < 0); % Message reçu
-        
+        Lc      = 2*y/sigmaz2(iSNR);   % Démodulation (retourne des LLRs) = Log de vraisemblance
+        %u_rec   = double(Lc(1:K) < 0); % Message reçu
+        u_rec    = viterbi_decode(Lc, trellis);
+
         BE      = sum(u(:) ~= u_rec(:)); % Nombre de bits faux sur cette trame
         bitErr  = bitErr + BE;
         pqtErr  = pqtErr + double(BE>0);
