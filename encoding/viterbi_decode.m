@@ -20,8 +20,7 @@ function u = viterbi_decode(y, trellis)
                 sNext = trellis.nextStates(s+1, b+1);
                 out = int2bit(trellis.outputs(s+1, b+1), ns)';   % 0/1
 
-                
-                bm = -sum(y(t,:) .* out);
+                bm = sum(y(t,:) ~= out);
 
                 nm = metrics(s+1, t) + bm;
                 if nm < metrics(sNext+1, t+1)
@@ -32,9 +31,9 @@ function u = viterbi_decode(y, trellis)
         end
     end
 
-    % --- Final otpimal state ---
-    [~, idx] = min(metrics(:, L+1));
-    states = zeros(1, L+1);
+    % --- Final optimal state ---
+    [~, idx]    = min(metrics(:, L+1));
+    states      = zeros(1, L+1);
     states(L+1) = idx - 1;
 
     % --- traceback ---

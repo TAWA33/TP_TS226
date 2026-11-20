@@ -14,5 +14,7 @@ function c = cc_encode(u, trellis)
         c_int(length(u)+i) = trellis.outputs(state+1, u_close+1);
         state = trellis.nextStates(state+1, u_close+1);
     end
+    % c = int2bit(c_int, log2(trellis.numInputSymbols));
+    %c = reshape(c.', 1, []);  
     c = int2bit(c_int, trellis.numInputSymbols);
 end
