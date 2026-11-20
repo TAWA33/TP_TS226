@@ -1,6 +1,8 @@
 clear
 clc
 
+addpath(genpath(pwd));
+
 M = 2; % B-PSK
 constellation = cstl_psk(M, true);
 
@@ -16,6 +18,3 @@ modulated_msg = mod_psk(encoded_msg, constellation);
 demod_msg = demod_psk(modulated_msg, constellation);
 
 decoded_msg = viterbi_decode(demod_msg, trellis)
-
-
-
