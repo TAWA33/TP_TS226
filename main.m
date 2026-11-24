@@ -1,11 +1,13 @@
 clear
 clc
 
+addpath(genpath(pwd));
+
 %% Parametres
 % -------------------------------------------------------------------------
 K = 1024; % Nombre de bits de message
 
-trellis = poly2trellis(3, [7, 5], 7); % Treillis de l'Encodeur
+trellis = poly2trellis(3, [5, 7]); % Treillis de l'Encodeur
 
 N = (K + log2(trellis.numStates))*log2(trellis.numOutputSymbols); % Nombre de bits codés par trame (codée)
 
@@ -13,11 +15,11 @@ R = K/N; % Rendement de la communication
 
 M = 2;   % Modulation BPSK <=> 2 symboles
 
-EbN0dB_min  = 0; % Minimum de EbN0
+EbN0dB_min  = -2; % Minimum de EbN0
 EbN0dB_max  = 10; % Maximum de EbN0
-EbN0dB_step = 1;% Pas de EbN0
+EbN0dB_step = 0.5;% Pas de EbN0
 
-nbrErreur  = 100;  % Nombre d'erreurs à observer avant de calculer un BER
+nbrErreur  = 1000;  % Nombre d'erreurs à observer avant de calculer un BER
 nbrBitMax = 100e6;% Nombre de bits max à simuler
 TEBMin     = 1e-5; % BER min
 
