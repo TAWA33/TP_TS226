@@ -14,14 +14,14 @@ codes_1(2).nom = '(5,7)_8';       codes_1(2).trellis = poly2trellis(3,[5 7]);
 codes_1(3).nom = '(13,15)_8';     codes_1(3).trellis = poly2trellis(4,[13 15]);
 codes_1(4).nom = '(133,171)_8';   codes_1(4).trellis = poly2trellis(7,[133 171]);
 
-% Liste des codes de la question 2.4
+% Liste des codes de la question 2.5
 codes_2 = struct('nom',{},'trellis',{});
 codes_2(1).nom = '(5,7)_8';       codes_2(1).trellis = poly2trellis(3,[5 7]);
 codes_2(2).nom = '(1,\frac{7}{5})_8';       codes_2(2).trellis = poly2trellis(3,[5 7], 7);
 codes_2(3).nom = '(13,15)_8';     codes_2(3).trellis = poly2trellis(4,[13 15]);
 codes_2(4).nom = '(1,\frac{15}{13})_8';     codes_2(4).trellis = poly2trellis(4,[13 15], 13);
 
-codes = codes_2;
+codes = codes_1;
 
 for i = 1:4
     distspec(codes(i).trellis)
@@ -33,9 +33,9 @@ EbN0dB_min  = -2;   % Minimum de EbN0
 EbN0dB_max  = 10;   % Maximum de EbN0
 EbN0dB_step = 0.5;  % Pas de EbN0
 
-nbrErreur  = 100;  % Nombre d'erreurs à observer avant de calculer un BER
+nbrErreur  = 200;  % Nombre d'erreurs à observer avant de calculer un BER
 nbrBitMax  = 100e6; % Nombre de bits max à simuler
-TEBMin     = 1e-5;  % BER min
+TEBMin     = 3e-6;  % BER min
 
 EbN0dB  = EbN0dB_min:EbN0dB_step:EbN0dB_max;
 EbN0    = 10.^(EbN0dB/10);
@@ -129,14 +129,14 @@ for iCode = 1:numCodes
             %% Recepteur
             rx_tic = tic;
             Lc     = 2*y/sigmaz2(iSNR);
-            u_rec  = viterbi_decode(double(Lc < 0), trellis);
+            u_rec  = viterbi_decode_improved(Lc, trellis);
             u_rec  = u_rec(1:K);
 
             BE     = sum(u(:) ~= u_rec(:));
             bitErr = bitErr + BE;
             pqtErr = pqtErr + double(BE>0);
             T_rx   = T_rx + toc(rx_tic);
-            debitRX = pqtNbr*K/8/T_rx/1e3;
+            debitRX = pqtNbr*K/8/T_rx/1e6;
 
             %% Affichage du résultat en cours de run
             if mod(pqtNbr,100) == 1
