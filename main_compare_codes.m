@@ -14,7 +14,7 @@ codes_1(2).nom = '(5,7)_8';       codes_1(2).trellis = poly2trellis(3,[5 7]);
 codes_1(3).nom = '(13,15)_8';     codes_1(3).trellis = poly2trellis(4,[13 15]);
 codes_1(4).nom = '(133,171)_8';   codes_1(4).trellis = poly2trellis(7,[133 171]);
 
-% Liste des codes de la question 2.4
+% Liste des codes de la question 2.5
 codes_2 = struct('nom',{},'trellis',{});
 codes_2(1).nom = '(5,7)_8';       codes_2(1).trellis = poly2trellis(3,[5 7]);
 codes_2(2).nom = '(1,\frac{7}{5})_8';       codes_2(2).trellis = poly2trellis(3,[5 7], 7);
@@ -33,9 +33,9 @@ EbN0dB_min  = -2;   % Minimum de EbN0
 EbN0dB_max  = 10;   % Maximum de EbN0
 EbN0dB_step = 0.5;  % Pas de EbN0
 
-nbrErreur  = 100;  % Nombre d'erreurs à observer avant de calculer un BER
+nbrErreur  = 500;   % Nombre d'erreurs à observer avant de calculer un BER   % <--
 nbrBitMax  = 100e6; % Nombre de bits max à simuler
-TEBMin     = 1e-5;  % BER min
+TEBMin     = 3e-6;  % BER min (inutile de simuler sous 3e-6, cf. sujet)      % <--
 
 EbN0dB  = EbN0dB_min:EbN0dB_step:EbN0dB_max;
 EbN0    = 10.^(EbN0dB/10);
@@ -72,7 +72,7 @@ legend('Interpreter','latex','FontSize',18,'Location','southwest')
 % -------------------------------------------------------------------------
 line       =  '|------------|---------------|------------|------------|----------|----------|------------------|-------------------|--------------|\n';
 msg_header =  '|  Eb/N0 dB  |    Bit nbr    |  Bit err   |  Pqt err   |   TEB    |   TEP    |     Debit Tx     |      Debit Rx     | Tps restant  |\n';
-msgFormat  =  '|   %7.2f  |   %9d   |  %9d |  %9d | %2.2e | %2.2e |  %10.2f MO/s |   %10.2f MO/s |   %8.2f s |\n';
+msgFormat  =  '|   %7.2f  |   %9d   |  %9d |  %9d | %2.2e | %2.2e |  %10.2f MO/s |   %10.2f kO/s |   %8.2f s |\n';
 
 %% Résultats pour le tableau récapitulatif
 % -------------------------------------------------------------------------
@@ -129,14 +129,14 @@ for iCode = 1:numCodes
             %% Recepteur
             rx_tic = tic;
             Lc     = 2*y/sigmaz2(iSNR);
-            u_rec  = viterbi_decode(double(Lc < 0), trellis);
+            u_rec  = viterbi_decode_improved(Lc, trellis);   % <-- décodage souple
             u_rec  = u_rec(1:K);
 
             BE     = sum(u(:) ~= u_rec(:));
             bitErr = bitErr + BE;
             pqtErr = pqtErr + double(BE>0);
             T_rx   = T_rx + toc(rx_tic);
-            debitRX = pqtNbr*K/8/T_rx/1e3;
+            debitRX = pqtNbr*K/8/T_rx/1e3;                   % <-- MO/s (était /1e3)
 
             %% Affichage du résultat en cours de run
             if mod(pqtNbr,100) == 1
@@ -214,37 +214,26 @@ end
 
 %% Tableau récapitulatif
 % -------------------------------------------------------------------------
-% Point de croisement de la courbe non codée à Pb = 1e-5
-idx_below = find(TEB < 1e-5, 1, 'first');
-if isempty(idx_below) || idx_below == 1
-    EbN0_code_1e5 = NaN;   % pas de croisement dans la plage simulée
-else
-    EbN0_code_1e5 = interp1(log10(TEB(idx_below-1:idx_below)), ...
-        EbN0dB(idx_below-1:idx_below), -5);
-end
+EbN0_non_code_1e5 = interp1(log10(Pb_u), EbN0dB, -5);                   % <--
+
 for iCode = 1:numCodes
     TEB = resultats(iCode).TEB;
-    valid = TEB > 0;
-    idx = find(valid, 1, 'last');
-    if isempty(idx) || idx == length(EbN0dB)
+    idx = find(TEB > 0 & TEB < 1e-5, 1, 'first');                        % <--
+    if isempty(idx) || idx == 1                                          % <--
         EbN0_code_1e5 = NaN;
     else
-        EbN0_code_1e5 = interp1(log10(TEB(idx:idx+1)), ...
-            EbN0dB(idx:idx+1), -5);
+        EbN0_code_1e5 = interp1(log10(TEB(idx-1:idx)), ...               % <--
+            EbN0dB(idx-1:idx), -5);                                      % <--
     end
-    resultats(iCode).EbN0_1e5 = EbN0_code_1e5;
-    if ~isnan(EbN0_code_1e5) && ~isnan(EbN0_non_code_1e5)
-        resultats(iCode).gain_codage = EbN0_non_code_1e5 - EbN0_code_1e5;
-    else
-        resultats(iCode).gain_codage = NaN;
-    end
+    resultats(iCode).EbN0_1e5    = EbN0_code_1e5;
+    resultats(iCode).gain_codage = EbN0_non_code_1e5 - EbN0_code_1e5;    % <--
 end
 
 fprintf('\n============================================================\n');
 fprintf('  TABLEAU RECAPITULATIF - Question 2.4 (K = %d)\n', K);
 fprintf('============================================================\n');
 fprintf('| %-14s | %-8s | %-5s | %-7s | %-7s | %-10s | %-14s |\n', ...
-    'Code', 'Rendement', 'm', 'Etats', 'd_min', 'Gain (dB)', 'Debit Rx (kO/s)');
+    'Code', 'Rendement', 'm', 'Etats', 'd_min', 'Gain (dB)', 'Debit Rx (kO/s)');   % <-- unité
 fprintf('|----------------|----------|-------|---------|---------|------------|----------------|\n');
 for iCode = 1:numCodes
     fprintf('| %-14s | %-8.4f | %-5d | %-7d | %-7d | %-10.2f | %-14.2f |\n', ...
