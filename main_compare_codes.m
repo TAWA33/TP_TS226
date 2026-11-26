@@ -21,7 +21,7 @@ codes_2(2).nom = '(1,\frac{7}{5})_8';       codes_2(2).trellis = poly2trellis(3,
 codes_2(3).nom = '(13,15)_8';     codes_2(3).trellis = poly2trellis(4,[13 15]);
 codes_2(4).nom = '(1,\frac{15}{13})_8';     codes_2(4).trellis = poly2trellis(4,[13 15], 13);
 
-codes = codes_2;
+codes = codes_1;
 
 for i = 1:4
     distspec(codes(i).trellis)

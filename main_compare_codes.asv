@@ -1,0 +1,264 @@
+clear
+clc
+
+addpath(genpath(pwd));
+
+%% Parametres
+% -------------------------------------------------------------------------
+K = 1024; % Nombre de bits de message
+
+% Liste des codes de la question 2.4
+codes_1 = struct('nom',{},'trellis',{});
+codes_1(1).nom = '(2,3)_8';       codes_1(1).trellis = poly2trellis(2,[2 3]);
+codes_1(2).nom = '(5,7)_8';       codes_1(2).trellis = poly2trellis(3,[5 7]);
+codes_1(3).nom = '(13,15)_8';     codes_1(3).trellis = poly2trellis(4,[13 15]);
+codes_1(4).nom = '(133,171)_8';   codes_1(4).trellis = poly2trellis(7,[133 171]);
+
+% Liste des codes de la question 2.5
+codes_2 = struct('nom',{},'trellis',{});
+codes_2(1).nom = '(5,7)_8';       codes_2(1).trellis = poly2trellis(3,[5 7]);
+codes_2(2).nom = '(1,\frac{7}{5})_8';       codes_2(2).trellis = poly2trellis(3,[5 7], 7);
+codes_2(3).nom = '(13,15)_8';     codes_2(3).trellis = poly2trellis(4,[13 15]);
+codes_2(4).nom = '(1,\frac{15}{13})_8';     codes_2(4).trellis = poly2trellis(4,[13 15], 13);
+
+codes = codes_2;
+
+for i = 1:4
+    distspec(codes(i).trellis)
+end
+
+M = 2;   % Modulation BPSK <=> 2 symboles
+
+EbN0dB_min  = -2;   % Minimum de EbN0
+EbN0dB_max  = 10;   % Maximum de EbN0
+EbN0dB_step = 0.5;  % Pas de EbN0
+
+nbrErreur  = 100;  % Nombre d'erreurs à observer avant de calculer un BER
+nbrBitMax  = 100e6; % Nombre de bits max à simuler
+TEBMin     = 1e-5;  % BER min
+
+EbN0dB  = EbN0dB_min:EbN0dB_step:EbN0dB_max;
+EbN0    = 10.^(EbN0dB/10);
+
+%% Préparation de l'affichage graphique
+% -------------------------------------------------------------------------
+Pb_u = qfunc(sqrt(2*EbN0)); % Probabilité d'erreur binaire non codée théorique
+
+numCodes = numel(codes);
+TEB_all  = nan(numCodes, length(EbN0dB));
+TEP_all  = nan(numCodes, length(EbN0dB));
+
+figure(1)
+clf
+semilogy(EbN0dB, Pb_u, 'k--', 'LineWidth',1.5, ...
+    'DisplayName','$P_b$ (BPSK théorique, non codé)');
+hold on
+hTEB = gobjects(1, numCodes);
+for iCode = 1:numCodes
+    hTEB(iCode) = semilogy(EbN0dB, TEB_all(iCode,:), 'LineWidth',1.5, ...
+        'XDataSource','EbN0dB', ...
+        'YDataSource', sprintf('TEB_all(%d,:)', iCode), ...
+        'DisplayName', codes(iCode).nom);
+end
+ylim([1e-6 1])
+xlim([EbN0dB_min EbN0dB_max])
+grid on
+title('Convolutive Codes', 'FontSize', 22);
+xlabel('$\frac{E_b}{N_0}$ en dB','Interpreter','latex','FontSize',18)
+ylabel('TEB','Interpreter','latex','FontSize',18)
+legend('Interpreter','latex','FontSize',18,'Location','southwest')
+
+%% Préparation de l'affichage en console
+% -------------------------------------------------------------------------
+line       =  '|------------|---------------|------------|------------|----------|----------|------------------|-------------------|--------------|\n';
+msg_header =  '|  Eb/N0 dB  |    Bit nbr    |  Bit err   |  Pqt err   |   TEB    |   TEP    |     Debit Tx     |      Debit Rx     | Tps restant  |\n';
+msgFormat  =  '|   %7.2f  |   %9d   |  %9d |  %9d | %2.2e | %2.2e |  %10.2f MO/s |   %10.2f MO/s |   %8.2f s |\n';
+
+%% Résultats pour le tableau récapitulatif
+% -------------------------------------------------------------------------
+resultats = struct();
+
+%% Boucle sur les codes
+% -------------------------------------------------------------------------
+for iCode = 1:numCodes
+    trellis = codes(iCode).trellis;
+
+    % Recalcul indispensable pour chaque code
+    N       = (K + log2(trellis.numStates))*log2(trellis.numOutputSymbols);
+    R       = K/N;
+    EsN0    = R*log2(M)*EbN0;
+    sigmaz2 = 1./(2*EsN0);
+
+    TEB = zeros(1,length(EbN0dB));
+    TEP = zeros(1,length(EbN0dB));
+    debitRX_final = NaN;
+
+    fprintf('\n============================================================\n');
+    fprintf('  Code %s  (R = %.4f, N = %d bits codés)\n', ...
+        codes(iCode).nom, R, N);
+    fprintf('============================================================\n');
+    fprintf(line      );
+    fprintf(msg_header);
+    fprintf(line      );
+
+    for iSNR = 1:length(EbN0dB)
+        reverseStr = '';
+
+        pqtNbr = 0;
+        bitErr = 0;
+        pqtErr = 0;
+        T_rx   = 0;
+        T_tx   = 0;
+        general_tic = tic;
+
+        while (bitErr < nbrErreur && pqtNbr*K < nbrBitMax)
+            pqtNbr = pqtNbr + 1;
+
+            %% Emetteur
+            tx_tic = tic;
+            u      = randi([0,1],1,K);
+            c      = cc_encode(u, trellis);
+            x      = 1-2*c;
+            T_tx   = T_tx + toc(tx_tic);
+            debitTX = pqtNbr*K/8/T_tx/1e6;
+
+            %% Canal
+            z = sqrt(sigmaz2(iSNR)) * randn(size(x));
+            y = x + z;
+
+            %% Recepteur
+            rx_tic = tic;
+            Lc     = 2*y/sigmaz2(iSNR);
+            u_rec  = viterbi_decode_improved(double(Lc < 0), trellis);
+            u_rec  = u_rec(1:K);
+
+            BE     = sum(u(:) ~= u_rec(:));
+            bitErr = bitErr + BE;
+            pqtErr = pqtErr + double(BE>0);
+            T_rx   = T_rx + toc(rx_tic);
+            debitRX = pqtNbr*K/8/T_rx/1e3;
+
+            %% Affichage du résultat en cours de run
+            if mod(pqtNbr,100) == 1
+                pct1 = bitErr/nbrErreur;
+                pct2 = pqtNbr*K/nbrBitMax;
+                pct  = max(pct1, pct2);
+
+                display_str = sprintf(msgFormat, ...
+                    EbN0dB(iSNR), ...
+                    pqtNbr*K, ...
+                    bitErr, ...
+                    pqtErr, ...
+                    bitErr/(pqtNbr*K), ...
+                    pqtErr/pqtNbr, ...
+                    debitTX, ...
+                    debitRX, ...
+                    toc(general_tic)/pct*(1-pct));
+                lr = length(reverseStr);
+                msg_sz = fprintf([reverseStr, display_str]);
+                reverseStr = repmat(sprintf('\b'), 1, msg_sz-lr);
+
+                TEB(iSNR) = bitErr/(pqtNbr*K);
+                TEP(iSNR) = pqtErr/pqtNbr;
+                TEB_all(iCode,iSNR) = TEB(iSNR);
+                TEP_all(iCode,iSNR) = TEP(iSNR);
+                refreshdata(hTEB(iCode));
+            end
+        end
+
+        % Ligne finale pour ce point de Eb/N0
+        display_str = sprintf(msgFormat, EbN0dB(iSNR), pqtNbr*K, bitErr, ...
+            pqtErr, bitErr/(pqtNbr*K), pqtErr/pqtNbr, debitTX, debitRX, 0);
+        fprintf(reverseStr);
+        msg_sz = fprintf(display_str);
+        reverseStr = repmat(sprintf('\b'), 1, msg_sz);
+
+        TEB(iSNR) = bitErr/(pqtNbr*K);
+        TEP(iSNR) = pqtErr/pqtNbr;
+        TEB_all(iCode,iSNR) = TEB(iSNR);
+        TEP_all(iCode,iSNR) = TEP(iSNR);
+        refreshdata(hTEB(iCode));
+        drawnow limitrate
+
+        debitRX_final = debitRX;
+
+        if TEB(iSNR) < TEBMin
+            break
+        end
+    end
+
+    set(gca, 'FontSize', 20);
+    grid on;
+    exportgraphics(gcf, 'comparison_conv_codes_2_4.png', 'BackgroundColor', 'white');
+    fprintf(line      );
+
+    %% Stockage des résultats du code
+    resultats(iCode).nom          = codes(iCode).nom;
+    resultats(iCode).trellis      = trellis;
+    resultats(iCode).N            = N;
+    resultats(iCode).R            = R;
+    resultats(iCode).m            = log2(trellis.numStates);
+    resultats(iCode).numStates    = trellis.numStates;
+    resultats(iCode).TEB          = TEB;
+    resultats(iCode).TEP          = TEP;
+    resultats(iCode).debitRX_final = debitRX_final;
+
+    % Distance minimale via distspec
+    ds = distspec(trellis);
+    if isfield(ds,'dfree')
+        resultats(iCode).dmin = ds.dfree;
+    else
+        resultats(iCode).dmin = NaN;
+    end
+end
+
+%% Tableau récapitulatif
+% -------------------------------------------------------------------------
+% Point de croisement de la courbe non codée à Pb = 1e-5
+idx_below = find(TEB < 1e-5, 1, 'first');
+if isempty(idx_below) || idx_below == 1
+    EbN0_code_1e5 = NaN;   % pas de croisement dans la plage simulée
+else
+    EbN0_code_1e5 = interp1(log10(TEB(idx_below-1:idx_below)), ...
+        EbN0dB(idx_below-1:idx_below), -5);
+end
+for iCode = 1:numCodes
+    TEB = resultats(iCode).TEB;
+    valid = TEB > 0;
+    idx = find(valid, 1, 'last');
+    if isempty(idx) || idx == length(EbN0dB)
+        EbN0_code_1e5 = NaN;
+    else
+        EbN0_code_1e5 = interp1(log10(TEB(idx:idx+1)), ...
+            EbN0dB(idx:idx+1), -5);
+    end
+    resultats(iCode).EbN0_1e5 = EbN0_code_1e5;
+    if ~isnan(EbN0_code_1e5) && ~isnan(EbN0_non_code_1e5)
+        resultats(iCode).gain_codage = EbN0_non_code_1e5 - EbN0_code_1e5;
+    else
+        resultats(iCode).gain_codage = NaN;
+    end
+end
+
+fprintf('\n============================================================\n');
+fprintf('  TABLEAU RECAPITULATIF - Question 2.4 (K = %d)\n', K);
+fprintf('============================================================\n');
+fprintf('| %-14s | %-8s | %-5s | %-7s | %-7s | %-10s | %-14s |\n', ...
+    'Code', 'Rendement', 'm', 'Etats', 'd_min', 'Gain (dB)', 'Debit Rx (kO/s)');
+fprintf('|----------------|----------|-------|---------|---------|------------|----------------|\n');
+for iCode = 1:numCodes
+    fprintf('| %-14s | %-8.4f | %-5d | %-7d | %-7d | %-10.2f | %-14.2f |\n', ...
+        resultats(iCode).nom, ...
+        resultats(iCode).R, ...
+        resultats(iCode).m, ...
+        resultats(iCode).numStates, ...
+        resultats(iCode).dmin, ...
+        resultats(iCode).gain_codage, ...
+        resultats(iCode).debitRX_final);
+end
+fprintf('|----------------|----------|-------|---------|---------|------------|----------------|\n');
+fprintf('Non codé : Eb/N0 à Pb=1e-5 = %.2f dB\n', EbN0_non_code_1e5);
+
+%% Sauvegarde
+% -------------------------------------------------------------------------
+save('resultats_q24.mat','EbN0dB','codes','resultats','K','Pb_u','TEB_all','TEP_all');
